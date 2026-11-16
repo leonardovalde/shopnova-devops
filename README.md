@@ -186,13 +186,41 @@ La primera ejecución del CI falló en `npm ci`: el `package-lock.json` generado
 
 ## Evidencias
 
-| Evidencia | Captura |
-|---|---|
-| CI en verde en GitHub Actions | `docs/capturas/ci-github-actions.png` *(pendiente)* |
-| Pull request bloqueado por un CI en rojo | `docs/capturas/pr-bloqueado.png` *(pendiente)* |
-| Pipeline de Jenkins con sus stages | `docs/capturas/jenkins-pipeline.png` *(pendiente)* |
-| Imagen publicada en Artifact Registry | `docs/capturas/artifact-registry.png` *(pendiente)* |
-| Entrega del webhook en GitHub (respuesta 200) | `docs/capturas/webhook.png` *(pendiente)* |
+### CI en GitHub Actions
+
+Historial de ejecuciones del workflow `CI`. La primera falló por el `package-lock.json` incompleto (ver sección anterior); desde el arreglo, todas pasan, incluida la del pull request #1.
+
+![Ejecuciones del CI en GitHub Actions](docs/capturas/ci-github-actions.png)
+
+### Pipeline de CD en Jenkins
+
+*Stage View* del job `shopnova-cd`. El build #1 se lanzó manualmente para registrar el job; el #2 lo disparó el webhook al fusionar el pull request #1 en `main`.
+
+![Stage View del pipeline shopnova-cd en Jenkins](docs/capturas/jenkins-pipeline.png)
+
+### Imagen publicada en Artifact Registry
+
+Cada build publica una imagen etiquetada con el hash del commit (`947a4f9`, `99a6173`).
+
+![Imágenes de shopnova-api en Artifact Registry](docs/capturas/artifact-registry.png)
+
+### Webhook de GitHub hacia Jenkins
+
+El webhook apunta a `https://jenkins.leostack.cloud/github-webhook/` y su última entrega fue exitosa.
+
+![Webhook configurado en GitHub](docs/capturas/webhook.png)
+
+### Jenkins con Docker Compose
+
+Los dos servicios del Compose en ejecución: `jenkins` y `cloudflared`.
+
+![Contenedores de Jenkins y cloudflared en Docker Desktop](docs/capturas/jenkins-docker-compose.png)
+
+### Protección de `main`: el CI como check requerido
+
+Pull request #2: el check **CI / Lint, build y pruebas** aparece como *Required* y el botón de merge solo se habilita cuando pasa en verde.
+
+![Pull request con el check requerido del CI en verde](docs/capturas/pr-check-requerido.png)
 
 ---
 
