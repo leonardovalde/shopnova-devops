@@ -1,1 +1,6 @@
-export class Producto {}
+export class Producto {
+  id!: number;
+  nombre!: string;
+  precio!: number;
+  stock!: number;
+}

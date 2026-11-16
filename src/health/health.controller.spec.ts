@@ -12,7 +12,10 @@ describe('HealthController', () => {
     controller = module.get<HealthController>(HealthController);
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
+  it('responde status ok con la hora en formato ISO', () => {
+    const respuesta = controller.check();
+
+    expect(respuesta.status).toBe('ok');
+    expect(new Date(respuesta.timestamp).toISOString()).toBe(respuesta.timestamp);
   });
 });

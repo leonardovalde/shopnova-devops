@@ -1,26 +1,46 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateProductoDto } from './dto/create-producto.dto.js';
 import { UpdateProductoDto } from './dto/update-producto.dto.js';
+import { Producto } from './entities/producto.entity.js';
 
 @Injectable()
 export class ProductosService {
-  create(createProductoDto: CreateProductoDto) {
-    return 'This action adds a new producto';
+  private productos: Producto[] = [
+    { id: 1, nombre: 'Audífonos inalámbricos', precio: 189900, stock: 25 },
+    { id: 2, nombre: 'Lámpara LED de escritorio', precio: 79900, stock: 40 },
+  ];
+  private siguienteId = 3;
+
+  create(dto: CreateProductoDto): Producto {
+    const producto: Producto = {
+      id: this.siguienteId++,
+      nombre: dto.nombre,
+      precio: dto.precio,
+      stock: dto.stock,
+    };
+    this.productos.push(producto);
+    return producto;
   }
 
-  findAll() {
-    return `This action returns all productos`;
+  findAll(): Producto[] {
+    return this.productos;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} producto`;
+  findOne(id: number): Producto {
+    const producto = this.productos.find((p) => p.id === id);
+    if (!producto) throw new NotFoundException(`Producto ${id} no existe`);
+    return producto;
   }
 
-  update(id: number, updateProductoDto: UpdateProductoDto) {
-    return `This action updates a #${id} producto`;
+  update(id: number, dto: UpdateProductoDto): Producto {
+    const producto = this.findOne(id);
+    Object.assign(producto, dto);
+    return producto;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} producto`;
+  remove(id: number): void {
+    const indice = this.productos.findIndex((p) => p.id === id);
+    if (indice === -1) throw new NotFoundException(`Producto ${id} no existe`);
+    this.productos.splice(indice, 1);
   }
 }
