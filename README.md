@@ -123,7 +123,7 @@ Archivo: [`Jenkinsfile`](Jenkinsfile). Se dispara por webhook con cada merge a `
 El [`Dockerfile`](Dockerfile) usa dos etapas:
 
 1. **builder** (`node:24-alpine`): instala todas las dependencias y compila TypeScript.
-2. **production** (`node:24-alpine`): solo dependencias de producción y el código compilado (`dist/`), ejecutado con el usuario sin privilegios `node`.
+2. **production** (`node:24-alpine`): solo dependencias de producción y el código compilado (`dist/`), sin npm ni npx, ejecutado con el usuario sin privilegios `node`.
 
 El [`.dockerignore`](.dockerignore) evita copiar `node_modules`, `dist`, `.git` y archivos de secretos al contexto de construcción.
 
@@ -181,6 +181,8 @@ docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ## Lo que detectó el pipeline
 
 La primera ejecución del CI falló en `npm ci`: el `package-lock.json` generado en macOS no incluía dependencias opcionales (`@emnapi/core`, `@emnapi/runtime`) que el runner Linux sí necesitaba. Se regeneró el lock y el pipeline pasó en verde. Es un ejemplo de lo que busca la integración continua: el error apareció en minutos y en un ambiente limpio, no en producción.
+
+El escaneo de Trivy en Jenkins reportó **6 vulnerabilidades HIGH** (0 CRITICAL, así que el *quality gate* no bloqueó). Al revisar el detalle, todas estaban en paquetes del npm que trae la imagen `node:24-alpine` (`brace-expansion` y `undici`, dentro de `/usr/local/lib/node_modules/npm`), no en las dependencias de la aplicación. Como la aplicación arranca con `node dist/main.js` y no necesita npm en tiempo de ejecución, el `Dockerfile` elimina npm, npx y corepack de la imagen final. Resultado: **0 vulnerabilidades HIGH o CRITICAL** y una imagen con menos herramientas disponibles para un atacante.
 
 ---
 
