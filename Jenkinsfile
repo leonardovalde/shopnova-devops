@@ -54,7 +54,8 @@ pipeline {
 
     post {
         always {
-            echo 'TODO: borrar la imagen local (docker rmi)'
+            sh 'docker rmi "$IMAGEN:$TAG" || true'
+            deleteDir()
         }
         success {
             echo 'Pipeline terminado: imagen publicada'
