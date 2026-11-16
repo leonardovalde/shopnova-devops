@@ -216,9 +216,11 @@ Los dos servicios del Compose en ejecución: `jenkins` y `cloudflared`.
 
 ![Contenedores de Jenkins y cloudflared en Docker Desktop](docs/capturas/jenkins-docker-compose.png)
 
-### Pendiente
+### Protección de `main`: el CI como check requerido
 
-- Pull request bloqueado por un CI en rojo (`docs/capturas/pr-bloqueado.png`).
+Pull request #2: el check **CI / Lint, build y pruebas** aparece como *Required* y el botón de merge solo se habilita cuando pasa en verde.
+
+![Pull request con el check requerido del CI en verde](docs/capturas/pr-check-requerido.png)
 
 ---
 
