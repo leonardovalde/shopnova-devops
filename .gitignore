@@ -1,0 +1,17 @@
+# dependencias y compilados
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# secretos (nunca al repo)
+.env
+.env.*
+*-key.json
+gcp-*.json
+
+# sistema / editor
+.DS_Store
+.vscode/
+.idea/
