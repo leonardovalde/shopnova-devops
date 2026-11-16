@@ -1,126 +1,203 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# ShopNova · Pipeline CI/CD
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API de catálogo de **ShopNova**, un e-commerce mediano ficticio, con un pipeline de integración continua en **GitHub Actions** y uno de entrega continua en **Jenkins** que construye la imagen Docker, la escanea y la publica en **Google Artifact Registry**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Proyecto del curso **Fundamentos de DevOps** (EFIN-FDVP20266), Maestría en Arquitectura de Software, Universidad de La Sabana. Corresponde a la fase 1 del proyecto (Unidad 2 · Actividad 3, laboratorio técnico) y aplica la arquitectura propuesta en la Actividad 2 de la misma unidad.
 
-## Description
+**Autor:** Jharvey Leonardo Valderrama Sepúlveda
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Arquitectura del flujo
 
-```bash
-$ npm install
+```mermaid
+flowchart LR
+    dev[Desarrollador] -->|rama + pull request| pr[Pull request]
+
+    subgraph CI [CI · GitHub Actions]
+        direction TB
+        c1[Checkout] --> c2[npm ci] --> c3[Lint · oxlint] --> c4[Build · tsc] --> c5[Pruebas unitarias] --> c6[Pruebas e2e]
+    end
+
+    pr --> CI
+    CI -->|check en verde habilita el merge| main[(main)]
+    main -->|webhook firmado| cf[Cloudflare Tunnel]
+
+    subgraph CD [CD · Jenkins]
+        direction TB
+        j1[Clonar repositorio] --> j2[Construir imagen Docker] --> j3[Escanear con Trivy] --> j4[Publicar en Artifact Registry]
+    end
+
+    cf --> CD
+    j4 --> ar[(Google Artifact Registry<br/>us-east1)]
 ```
 
-## Compile and run the project
+- **CI** valida cada pull request. La rama `main` está protegida: solo se puede fusionar si el CI pasa en verde.
+- **CD** se dispara con cada merge a `main`, de modo que Jenkins solo construye código que ya pasó el CI. La imagen se etiqueta con el hash del commit y solo llega al registro si Trivy no encuentra vulnerabilidades críticas.
+- El despliegue en Kubernetes y el monitoreo corresponden a las fases 2 y 3 del proyecto.
+
+---
+
+## Flujo de trabajo
+
+La rama `main` tiene un *ruleset* de GitHub que impide los push directos:
+
+| Regla | Efecto |
+|---|---|
+| Pull request obligatorio | Todo cambio entra por una rama y un pull request |
+| Status check requerido: **Lint, build y pruebas** | El botón de merge queda bloqueado hasta que el CI pasa en verde |
+| Rama actualizada antes del merge | El CI se valida contra la última versión de `main` |
+| Force push y borrado bloqueados | El historial de `main` no se puede reescribir |
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git checkout -b feature/mi-cambio
+# ...cambios...
+git push -u origin feature/mi-cambio
+gh pr create --fill          # corre el CI sobre el pull request
+# con el check en verde → Merge → el webhook dispara Jenkins
 ```
 
-## Run tests
+Así el CI funciona como *quality gate*: el código que no pasa lint, compilación o pruebas no llega a `main` ni, por lo tanto, al registro de imágenes.
+
+---
+
+## La aplicación
+
+API REST en **NestJS** (TypeScript, Node.js 24 LTS) con un catálogo de productos en memoria.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/productos` | Lista el catálogo |
+| `GET` | `/productos/:id` | Consulta un producto |
+| `POST` | `/productos` | Crea un producto |
+| `PATCH` | `/productos/:id` | Actualiza un producto |
+| `DELETE` | `/productos/:id` | Elimina un producto |
+| `GET` | `/health` | Estado de la aplicación (se usará como *probe* de Kubernetes en la fase 2) |
+
+### Ejecutar en local
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm ci
+npm run start:dev          # http://localhost:3000
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Ejecutar con Docker
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker build -t shopnova-api:local .
+docker run --rm -p 3000:3000 shopnova-api:local
+curl http://localhost:3000/productos
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Observability
+## Pipeline de CI · GitHub Actions
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+Archivo: [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Se ejecuta en cada `pull request` y en cada `push` hacia `main`.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+| Stage | Comando | Para qué |
+|---|---|---|
+| Checkout | `actions/checkout@v4` | Obtiene el código del commit |
+| Node.js 24 LTS | `actions/setup-node@v4` con caché de npm | Mismo runtime que la imagen de producción |
+| Instalar dependencias | `npm ci` | Instalación reproducible a partir del `package-lock.json` |
+| Análisis estático | `npm run lint` (oxlint con reglas de tipos) | Detecta errores y código sin uso antes de compilar |
+| Compilar | `npm run build` | Verifica que el TypeScript compila |
+| Pruebas unitarias | `npm test` (Vitest) | Valida la lógica del servicio de productos |
+| Pruebas end-to-end | `npm run test:e2e` | Levanta la aplicación y prueba los endpoints HTTP |
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+---
 
-This project is already instrumented. To connect it, run this and approve the code it prints at [observe.nestjs.com/link](https://observe.nestjs.com/link) - signing up for free if you have no account:
+## Pipeline de CD · Jenkins
+
+Archivo: [`Jenkinsfile`](Jenkinsfile). Se dispara por webhook con cada merge a `main`.
+
+| Stage | Qué hace |
+|---|---|
+| Clonar repositorio | `checkout scm` y obtiene el hash corto del commit, que se usa como tag de la imagen |
+| Construir imagen Docker | `docker build --pull` con el [`Dockerfile`](Dockerfile) multi-stage |
+| Escanear con Trivy | Primero reporta las vulnerabilidades HIGH y CRITICAL; después detiene el pipeline si hay alguna **CRITICAL** con parche disponible |
+| Publicar en Artifact Registry | `docker login` con la llave de la cuenta de servicio y `docker push` a `us-east1-docker.pkg.dev/unisabana-devops-labs/shopnova/shopnova-api:<commit>` |
+
+### Imagen Docker
+
+El [`Dockerfile`](Dockerfile) usa dos etapas:
+
+1. **builder** (`node:24-alpine`): instala todas las dependencias y compila TypeScript.
+2. **production** (`node:24-alpine`): solo dependencias de producción y el código compilado (`dist/`), ejecutado con el usuario sin privilegios `node`.
+
+El [`.dockerignore`](.dockerignore) evita copiar `node_modules`, `dist`, `.git` y archivos de secretos al contexto de construcción.
+
+---
+
+## Infraestructura de Jenkins
+
+Jenkins corre con **Docker Compose** ([`jenkins/`](jenkins/)) junto a un **Cloudflare Tunnel**, para que GitHub pueda entregar el webhook sin abrir puertos ni exponer una IP pública.
+
+```
+jenkins/
+├── Dockerfile           # jenkins/jenkins:lts-jdk21 + Docker CLI + plugins
+├── docker-compose.yml   # servicios jenkins y cloudflared
+└── .env                 # token del túnel (no versionado)
+```
 
 ```bash
-$ npx @nestjs/observe link
+cd jenkins
+docker compose up -d --build
+docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
-It writes the app key and secret into `.env` and makes every `nest start` script (`start`, `start:dev`, `start:debug`) load it. In production, set `OBSERVE_APP_KEY` and `OBSERVE_APP_SECRET` in the environment instead.
+---
 
-Or do it by hand: create an application and an API key at [observe.nestjs.com](https://observe.nestjs.com), and set the pair as `OBSERVE_APP_KEY` and `OBSERVE_APP_SECRET` in the environment the app runs in.
+## Herramientas y justificación
 
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
+| Herramienta | Rol | Por qué se eligió |
+|---|---|---|
+| **GitHub** | Repositorio, pull requests y protección de rama | Requisito del laboratorio; integración nativa con GitHub Actions, webhooks y rulesets |
+| **GitHub Actions** | CI | Vive junto al código, se define en YAML versionado y no requiere servidores propios; minutos ilimitados en repositorios públicos |
+| **NestJS + TypeScript** | Aplicación | Estructura por módulos, controladores y servicios con inyección de dependencias; el tipado permite separar lint, build y pruebas como etapas |
+| **oxlint** | Análisis estático | Linter incluido por el CLI de Nest; rápido y con reglas que usan la información de tipos |
+| **Vitest** | Pruebas | Incluido por el CLI de Nest; ejecuta pruebas unitarias y e2e |
+| **Docker** | Empaquetado | La misma imagen se ejecuta igual en cualquier ambiente (Turnbull, 2014) |
+| **Jenkins** | CD | Requisito del laboratorio; control total sobre los stages de entrega y ejecución en infraestructura propia |
+| **Trivy** | Escaneo de la imagen | Bloquea imágenes con vulnerabilidades críticas antes de que lleguen al registro; se ejecuta como contenedor con versión fija |
+| **Google Artifact Registry** | Registro de imágenes | Registro privado con control de acceso por IAM y preparado para el clúster de GKE de la fase 2; se prefirió sobre Docker Hub por los permisos granulares |
+| **Cloudflare Tunnel + Access** | Exposición de Jenkins | Permite recibir webhooks sin abrir puertos; la interfaz queda protegida con inicio de sesión |
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## Seguridad
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+- **Ningún secreto en el repositorio.** La llave de la cuenta de servicio de GCP vive en *Jenkins Credentials* y el token del túnel en `jenkins/.env`; ambos están excluidos por `.gitignore`.
+- **Cuenta de servicio con permiso mínimo.** `jenkins-ci` solo tiene el rol *Artifact Registry Writer* sobre el repositorio `shopnova`, no sobre el proyecto.
+- **La llave no aparece en los logs.** El login usa `--password-stdin` dentro de `withCredentials`, y la sesión se cierra con `docker logout` al terminar.
+- **Webhook firmado.** GitHub firma cada entrega con HMAC-SHA256 y Jenkins rechaza las que no traen la firma correcta.
+- **Interfaz de Jenkins protegida.** Cloudflare Access exige inicio de sesión; solo la ruta `/github-webhook/` queda abierta para GitHub.
+- **Imagen sin privilegios.** El contenedor de la aplicación corre con el usuario `node`, no como root.
+- **Decisión consciente:** Jenkins monta el socket de Docker del host para construir imágenes. Es práctico para un laboratorio, pero quien controla Jenkins controla Docker en esa máquina; en producción se usarían agentes efímeros o herramientas como Kaniko.
+- **Mejora identificada:** reemplazar la llave JSON por *Workload Identity Federation*, con el plugin OpenID Connect Provider de Jenkins, para eliminar credenciales de larga duración.
 
-## Support
+---
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Lo que detectó el pipeline
 
-## Stay in touch
+La primera ejecución del CI falló en `npm ci`: el `package-lock.json` generado en macOS no incluía dependencias opcionales (`@emnapi/core`, `@emnapi/runtime`) que el runner Linux sí necesitaba. Se regeneró el lock y el pipeline pasó en verde. Es un ejemplo de lo que busca la integración continua: el error apareció en minutos y en un ambiente limpio, no en producción.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
-## License
+## Evidencias
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Evidencia | Captura |
+|---|---|
+| CI en verde en GitHub Actions | `docs/capturas/ci-github-actions.png` *(pendiente)* |
+| Pull request bloqueado por un CI en rojo | `docs/capturas/pr-bloqueado.png` *(pendiente)* |
+| Pipeline de Jenkins con sus stages | `docs/capturas/jenkins-pipeline.png` *(pendiente)* |
+| Imagen publicada en Artifact Registry | `docs/capturas/artifact-registry.png` *(pendiente)* |
+| Entrega del webhook en GitHub (respuesta 200) | `docs/capturas/webhook.png` *(pendiente)* |
+
+---
+
+## Referencias
+
+- Kim, G., Humble, J., Debois, P., Willis, J. y Forsgren, N. (2022). *Manual de DevOps: Transformación exitosa de equipos, herramientas e infraestructura* (2.ª ed.). dpunkt.
+- Turnbull, J. (2014). *The Docker book: Containerization is the new virtualization*. Turnbull Press.
+- Documentación de [GitHub Actions](https://docs.github.com/actions), [Jenkins Pipeline](https://www.jenkins.io/doc/book/pipeline/), [Trivy](https://trivy.dev/) y [Artifact Registry](https://cloud.google.com/artifact-registry/docs).
